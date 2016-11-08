@@ -12,13 +12,21 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+#include <LightSensor.h>
+#include <PirSensor.h>
+#include <SwitchSensor.h>
 
+#define DEBUG false
+#define VERBOSE true
+
+#define DEEP_SLEEP false
+
+#define PUBLISH_INTERVAL 30
 #define SLEEP_DELAY_IN_SECONDS  30
 
 #define SWITCH_SENSOR_PIN D5
 #define LIGHT_SENSOR_PIN A0
 #define MOTION_SENSOR_PIN D6
-#define SHOCK_SENSOR_PIN D7
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
@@ -31,18 +39,15 @@ const char* inTopic = MQTT_IN_TOPIC;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-long lastMsg = 0;
+long lastRun = millis();
 char msg[150];
 int chipId = ESP.getChipId();
 
-int pirState = LOW;             // we start, assuming no motion detected
+LightSensor light = LightSensor(LIGHT_SENSOR_PIN, 30, false);
+PirSensor motion = PirSensor(MOTION_SENSOR_PIN, 2, false, false);
+SwitchSensor mySwitch = SwitchSensor(SWITCH_SENSOR_PIN, 1, false, false);
 
-
-int knockVal = HIGH; // This is where we record our shock measurement
-boolean bAlarm = false;
-unsigned long lastKnockTime; // Record the time that we measured a shock
-int knockAlarmTime = 500; // Number of milli seconds to keep the knock alarm high
-
+long motionSessionStart, switchSensorStart;
 
 void setup_wifi() {
     delay(10);
@@ -107,11 +112,10 @@ void reconnect() {
 }
 
 void setup(void) {
-    pinMode(SWITCH_SENSOR_PIN, INPUT);
-    pinMode(LIGHT_SENSOR_PIN, INPUT);
-    pinMode(MOTION_SENSOR_PIN, INPUT);
-    pinMode(SHOCK_SENSOR_PIN, INPUT);
     Serial.begin(115200);
+    light.begin();
+    motion.begin();
+    mySwitch.begin();
     setup_wifi();
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(callback);
@@ -124,70 +128,82 @@ void loop() {
     client.loop();
 
     long now = millis();
-    char valueLightChar[10];
-    char valueSwitchChar[10];
-    char valueMotionChar[10];
 
-    knockVal = digitalRead(SHOCK_SENSOR_PIN);
-    if (knockVal == LOW) {
-        lastKnockTime = millis(); // record the time of the shock
-        // The following is so you don't scroll on the output screen
-        if (!bAlarm){
-            Serial.println("KNOCK, KNOCK");
-            bAlarm = true;
+    // Stuff to do as soon as possible and as often as possible.
+    light.sampleValue();
+
+    // React to motion events
+    int motionStateChange = motion.sampleValue();
+    if (motionStateChange >= 0) {
+        if (DEBUG) {
+            Serial.print(" --> motionStateChange: "); Serial.println(motionStateChange);
         }
-    } else {
-        if((millis()-lastKnockTime) > knockAlarmTime  &&  bAlarm){
-            Serial.println("no knocks");
-            bAlarm = false;
+        if (motionStateChange == 1) {
+            motionSessionStart = millis();
+            snprintf(msg, 150, "{ \"chipId\": %d, \"motion\": %d }", chipId, motionStateChange);
+        } else {
+            long motionSessionLength = millis() - motionSessionStart;
+            snprintf(msg, 150, "{ \"chipId\": %d, \"motion\": %d, \"motionSessionLength\": %d }", chipId, motionStateChange, motionSessionLength);
         }
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
     }
 
+    // React to switch events
+    int switchStateChange = mySwitch.sampleValue();
+    if (switchStateChange >= 0) {
+        if (DEBUG) {
+            Serial.print(" --> switchStateChange: "); Serial.println(switchStateChange);
+        }
+        if (switchStateChange == 1) {
+            switchSensorStart = millis();
+            snprintf(msg, 150, "{ \"chipId\": %d, \"switch\": %d }", chipId, switchStateChange);
+        } else {
+            long switchSessionLength = millis() - switchSensorStart;
+            snprintf(msg, 150, "{ \"chipId\": %d, \"switch\": %d, \"switchSessionLength\": %d }", chipId, switchStateChange, switchSessionLength);
+        }
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
+    }
 
-    if (now - lastMsg > 1000) {
-        lastMsg = now;
-        float valueLight = analogRead(LIGHT_SENSOR_PIN);
-        Serial.print("Light: "); Serial.print(valueLight);
+    // Stuff to do at given time intervals.
+    if (now - lastRun > (PUBLISH_INTERVAL * 1000)) {
+        lastRun = now;
+        char valueLightChar[10];
 
-        float valueSwitch = digitalRead(SWITCH_SENSOR_PIN);
-        Serial.print(", Micro Switch: "); Serial.print(valueSwitch);
-
-        int valueMotion = 0;            // variable for reading the pin status
-        valueMotion = digitalRead(MOTION_SENSOR_PIN);   // read input value
-        if (valueMotion == HIGH) {             // check if the input is HIGH
-            // digitalWrite(ledPin, HIGH);  // turn LED ON
-            if (pirState == LOW) {
-                // we have just turned on
-                Serial.println(", Motion detected!");
-                // We only want to print on the output change, not state
-                pirState = HIGH;
-            }
-            } else {
-                // digitalWrite(ledPin, LOW); // turn LED OFF
-                if (pirState == HIGH){
-                    // we have just turned of
-                    Serial.println(", Motion ended!");
-                    // We only want to print on the output change, not state
-                    pirState = LOW;
-                }
+        float valueLight = light.readValue();
+        dtostrf(valueLight, 3, 1, valueLightChar);
+        if (DEBUG) {
+            Serial.print(", Light: "); Serial.print(valueLightChar);
         }
 
-        Serial.println();
+        // int valueMotion = round(motion.readValue());
+        // if (DEBUG) {
+        //     Serial.print("Motion: "); Serial.println(valueMotion);
+        // }
 
-        // Prepare and send to MQTT
-        // dtostrf(valueLight, 3, 2, valueLightChar); // first 2 is the width including the . (1.) and the 2nd 2 is the precision (.23)
-        // dtostrf(valueSwitch, 3, 2, valueSwitchChar);
-        // dtostrf(valueMotion, 3, 2, valueMotionChar);
-        // snprintf (msg, 150, "{ \"chipId\": %d, \"light\": %s, \"switch\": %s, \"motion\": %s }", chipId, valueLightChar, valueSwitchChar, valueMotionChar);
-        // Serial.print("Publish message: ");
-        // Serial.println(msg);
-        // client.publish(outTopic, msg);
+        // int valueSwitch = round(mySwitch.readValue());
+        // if (DEBUG) {
+        //     Serial.print("Switch: "); Serial.println(valueSwitch);
+        // }
 
-        // Do deep sleep if you want to:
-        // Serial.print("Entering deep sleep mode for ");
-        // Serial.print(SLEEP_DELAY_IN_SECONDS);
-        // Serial.println(" seconds...");
-        // ESP.deepSleep(SLEEP_DELAY_IN_SECONDS * 1000000, WAKE_RF_DEFAULT);
+        // Sending to MQTT
+        // snprintf (msg, 150, "{ \"chipId\": %d, \"light\": %s, \"motion\": %d, \"switch\": %d }",
+        //     chipId, valueLightChar, valueMotion, valueSwitch);
+        snprintf (msg, 150, "{ \"chipId\": %d, \"light\": %s }", chipId, valueLightChar);
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
+
+        if (DEEP_SLEEP) {
+            Serial.print("Entering deep sleep mode for "); Serial.print(SLEEP_DELAY_IN_SECONDS); Serial.println(" seconds...");
+            ESP.deepSleep(SLEEP_DELAY_IN_SECONDS * 1000000, WAKE_RF_DEFAULT);
+        }
     }
 }
 
