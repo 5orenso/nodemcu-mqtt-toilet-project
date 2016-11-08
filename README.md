@@ -4,7 +4,7 @@ __This is work in progress. I've just uploaded my CRUD project files for now. Pl
 
 ### TL;DR
 
-* Hook up your sensor: `SDA` = `D2` and `SCL` = `D1`.
+* Hook up your sensor: `SWITCH` = `D5`, `LIGHT` = `A0` and `MOTION` = `D6`.
 * Run a couple of commands:
 ```bash
 $ cp ./platformio-dist.ini platformio.ini
