@@ -4,6 +4,8 @@ __This is work in progress. I've just uploaded my CRUD project files for now. Pl
 
 ### TL;DR
 
+[Toilet project sketch](img/fritzing-toilet-project.jpg)
+
 * Hook up your sensor: `SWITCH` = `D5`, `LIGHT` = `A0` and `MOTION` = `D6`.
 * Run a couple of commands:
 ```bash
