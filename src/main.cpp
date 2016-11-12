@@ -44,7 +44,7 @@ char msg[150];
 int chipId = ESP.getChipId();
 
 LightSensor light = LightSensor(LIGHT_SENSOR_PIN, 30, false);
-PirSensor motion = PirSensor(MOTION_SENSOR_PIN, 2, false, false);
+PirSensor motion = PirSensor(MOTION_SENSOR_PIN, 1, false, false);
 SwitchSensor mySwitch = SwitchSensor(SWITCH_SENSOR_PIN, 1, false, false);
 
 long motionSessionStart, switchSensorStart;
