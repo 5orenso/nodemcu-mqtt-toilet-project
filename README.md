@@ -2,6 +2,15 @@
 
 __This is work in progress. I've just uploaded my CRUD project files for now. Please be patient with me.__
 
+```ascii
+ --------     ---------     --------     -----     ----------     -------------
+| sensor |-->| NodeMCU |   | MQTT   |   | AWS |   | AWS      |   | AWS         |
+ --------   ^| ESP8266 |-->| Broker |-->| IoT |-->| IoT Rule |-->| Elasticache |
+ --------  /  ---------     --------     -----     ----------     -------------
+| sensor |/
+ --------
+```
+
 ### TL;DR
 
 ![Toilet project sketch](img/fritzing-toilet-project.jpg)
@@ -29,6 +38,7 @@ Weee :-)
 * [Getting started with Arduino, NodeMCU or Wemos D1 mini](https://github.com/5orenso/arduino-getting-started)
 * [Toilet project light display](https://github.com/5orenso/nodemcu-mqtt-toilet-project-display)
 * [Bitbar toilet menu plugin](https://github.com/TeliaSoneraNorge/iot-hackaton-toilet-u1-bitbar)
+* [AMI for MQTT Broker](https://github.com/5orenso/aws-ami-creation)
 
 
 ## Contribute
