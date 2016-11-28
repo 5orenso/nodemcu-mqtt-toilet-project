@@ -25,6 +25,7 @@
 #define SLEEP_DELAY_IN_SECONDS  30
 
 #define SWITCH_SENSOR_PIN D5
+#define SWITCH_SENSOR_WOMEN_PIN D7
 #define LIGHT_SENSOR_PIN A0
 #define MOTION_SENSOR_PIN D6
 
@@ -42,12 +43,31 @@ PubSubClient client(espClient);
 long lastRun = millis();
 char msg[150];
 int chipId = ESP.getChipId();
+//
+// Other info about the micro controller
+
+// ESP.getResetReason() returns String containing the last reset resaon in human readable format.
+// ESP.getFreeHeap() returns the free heap size.
+// ESP.getChipId() returns the ESP8266 chip ID as a 32-bit integer.
+//
+// Several APIs may be used to get flash chip info:
+// ESP.getFlashChipId() returns the flash chip ID as a 32-bit integer.
+// ESP.getFlashChipSize() returns the flash chip size, in bytes, as seen by the SDK (may be less than actual size).
+// ESP.getFlashChipSpeed(void) returns the flash chip frequency, in Hz.
+// ESP.getCycleCount() returns the cpu instruction cycle count since start as an unsigned 32-bit. This is useful for accurate timing of very short actions like bit banging.
+//
+// WiFi.macAddress(mac) is for STA, WiFi.softAPmacAddress(mac) is for AP.
+// WiFi.localIP() is for STA, WiFi.softAPIP() is for AP.
+
+
+
 
 LightSensor light = LightSensor(LIGHT_SENSOR_PIN, 30, false);
 PirSensor motion = PirSensor(MOTION_SENSOR_PIN, 1, false, false);
 SwitchSensor mySwitch = SwitchSensor(SWITCH_SENSOR_PIN, 1, false, false);
+SwitchSensor mySwitchWomen = SwitchSensor(SWITCH_SENSOR_WOMEN_PIN, 1, false, false);
 
-long motionSessionStart, switchSensorStart;
+long motionSessionStart, switchSensorStart, switchWomenSensorStart;
 
 void setup_wifi() {
     delay(10);
@@ -116,6 +136,7 @@ void setup(void) {
     light.begin();
     motion.begin();
     mySwitch.begin();
+    mySwitchWomen.begin();
     setup_wifi();
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(callback);
@@ -163,6 +184,25 @@ void loop() {
         } else {
             long switchSessionLength = millis() - switchSensorStart;
             snprintf(msg, 150, "{ \"chipId\": %d, \"switch\": %d, \"switchSessionLength\": %d }", chipId, switchStateChange, switchSessionLength);
+        }
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
+    }
+
+    // React to switchWomen events
+    int switchWomenStateChange = mySwitchWomen.sampleValue();
+    if (switchWomenStateChange >= 0) {
+        if (DEBUG) {
+            Serial.print(" --> switchWomenStateChange: "); Serial.println(switchWomenStateChange);
+        }
+        if (switchWomenStateChange == 1) {
+            switchWomenSensorStart = millis();
+            snprintf(msg, 150, "{ \"chipId\": %d, \"switchWomen\": %d }", chipId, switchWomenStateChange);
+        } else {
+            long switchWomenSessionLength = millis() - switchWomenSensorStart;
+            snprintf(msg, 150, "{ \"chipId\": %d, \"switchWomen\": %d, \"switchWomenSessionLength\": %d }", chipId, switchWomenStateChange, switchWomenSessionLength);
         }
         if (VERBOSE) {
             Serial.print("Publish message: "); Serial.println(msg);
