@@ -23,9 +23,6 @@ float LightSensor::sampleValue() {
     if (now - lastSample > 50) {
         lastSample = now;
         samples[sampleIndex] = analogRead(pin);
-        if (debug) {
-            Serial.print(" -->"); Serial.print(sampleIndex); Serial.print(": "); Serial.println(samples[sampleIndex]);
-        }
         sampleIndex++;
         if (sampleIndex >= samplesTotal) {
             sampleIndex = 0;
@@ -39,18 +36,11 @@ float LightSensor::readValue() {
     average = 0;
     int valuesCount = 0;
     for (int i = 0; i < samplesTotal; i++) {
-        if (debug) {
-            Serial.print("  -->"); Serial.print(i); Serial.print(": "); Serial.println(samples[i]);
-        }
         if (samples[i] > 0.00) {
             valuesCount++;
             average += samples[i];
         }
     }
-    if (debug) {
-        Serial.print(" ==>"); Serial.println(average);
-    }
     average = (float)average / (float)valuesCount;
-
     return average;
 }
