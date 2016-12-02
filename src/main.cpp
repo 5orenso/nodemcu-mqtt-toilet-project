@@ -10,6 +10,8 @@
 #include <PirSensor.h>
 #include <SwitchSensor.h>
 
+const char* PACKAGE_NAME = "nodemcu-mqtt-toilet-project";
+
 #define DEBUG false
 #define VERBOSE true
 
@@ -32,6 +34,10 @@ const int   mqtt_port = MQTT_PORT;
 const char* outTopic = MQTT_OUT_TOPIC;
 const char* inTopic = MQTT_IN_TOPIC;
 
+WiFiEventHandler gotIpEventHandler, disconnectedEventHandler;
+bool wifiConnected = false;
+long wifiDisconnectedPeriode, wifiDisconnectedPeriodeStart;
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 bool controllerInfoNeedsToBeSent = false;
@@ -49,7 +55,7 @@ long motionSessionStart, switchSensorStart, switchWomenSensorStart;
 
 void setupWifi() {
     delay(10);
-    WiFi.disconnect();
+    // WiFi.disconnect();
     // We start by connecting to a WiFi network
     Serial.println();
     Serial.print("Connecting to ");
@@ -65,7 +71,11 @@ void setupWifi() {
     }
     randomSeed(micros());
     Serial.println("");
+    Serial.print("WiFi connected with IP: ");
+    Serial.println(WiFi.localIP());
+}
 
+void setupOTA() {
     // OTA start
     // Port defaults to 8266
     // ArduinoOTA.setPort(8266);
@@ -106,11 +116,8 @@ void setupWifi() {
     });
     ArduinoOTA.begin();
     // OTA end
-
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
 }
+
 
 void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("Message arrived [");
@@ -130,7 +137,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 void sendControllerInfo() {
     if (client.connected()) {
         // --[ Publish this device to AWS IoT ]----------------------------------------
-        // String nodemcuResetReason = ESP.getResetReason(); // returns String containing the last reset resaon in human readable format.
+        String nodemcuResetReason = ESP.getResetReason(); // returns String containing the last reset resaon in human readable format.
         int nodemcuFreeHeapSize = ESP.getFreeHeap(); // returns the free heap size.
         // Several APIs may be used to get flash chip info:
         int nodemcuFlashChipId = ESP.getFlashChipId(); // returns the flash chip ID as a 32-bit integer.
@@ -139,7 +146,10 @@ void sendControllerInfo() {
         // int nodemcuCycleCount = ESP.getCycleCount(); // returns the cpu instruction cycle count since start as an unsigned 32-bit. This is useful for accurate timing of very short actions like bit banging.
         // WiFi.macAddress(mac) is for STA, WiFi.softAPmacAddress(mac) is for AP.
         // int nodemcuIP; // = WiFi.localIP(); // is for STA, WiFi.softAPIP() is for AP.
+
         char msg[150];
+        char resetReason[25];
+        strcpy(resetReason, nodemcuResetReason.c_str());
         uint32 ipAddress;
         char ipAddressFinal[16];
         ipAddress = WiFi.localIP();
@@ -153,6 +163,30 @@ void sendControllerInfo() {
         }
         snprintf(msg, 150, "{ \"chipId\": %d, \"freeHeap\": %d, \"ip\": \"%s\", \"ssid\": \"%s\" }",
             nodemcuChipId, nodemcuFreeHeapSize, ipAddressFinal, ssid
+        );
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
+
+        // More info about the software.
+        snprintf(msg, 150, "{ \"chipId\": %d, \"ip\": \"%s\", \"sw\": \"%s\" }",
+            nodemcuChipId, ipAddressFinal, PACKAGE_NAME
+        );
+        if (VERBOSE) {
+            Serial.print("Publish message: "); Serial.println(msg);
+        }
+        client.publish(outTopic, msg);
+
+        // More info about the software.
+        // 0 -> normal startup by power on
+        // 1 -> hardware watch dog reset
+        // 2 -> software watch dog reset (From an exception)
+        // 3 -> software watch dog reset system_restart (Possibly unfed wd got angry)
+        // 4 -> soft restart (Possibly with a restart command)
+        // 5 -> wake up from deep-sleep
+        snprintf(msg, 150, "{ \"chipId\": %d, \"wifiOfflinePeriode\": %d, \"resetReason\": \"%s\" }",
+            nodemcuChipId, wifiDisconnectedPeriode, resetReason
         );
         if (VERBOSE) {
             Serial.print("Publish message: "); Serial.println(msg);
@@ -188,18 +222,32 @@ void reconnectMqtt() {
 
 void setup(void) {
     Serial.begin(115200);
+    gotIpEventHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP& event) {
+        wifiConnected = true;
+        wifiDisconnectedPeriode = millis() - wifiDisconnectedPeriodeStart;
+        Serial.print("Station connected, IP: ");
+        Serial.println(WiFi.localIP());
+    });
+    disconnectedEventHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& event) {
+        wifiConnected = false;
+        wifiDisconnectedPeriodeStart = millis();
+        Serial.println("Station disconnected...");
+    });
+    setupWifi();
+    setupOTA();
+    client.setServer(mqtt_server, mqtt_port);
+    client.setCallback(callback);
+
     light.begin();
     motion.begin();
     mySwitch.begin();
     mySwitchWomen.begin();
-    setupWifi();
-    client.setServer(mqtt_server, mqtt_port);
-    client.setCallback(callback);
 }
 
 void loop() {
-    if (WiFi.status() != WL_CONNECTED) {
-        setupWifi();
+    delay(0); // Allow internal stuff to be executed.
+    if (!wifiConnected) {
+        delay(1000);
         return;
     }
     if (!client.connected()) {
