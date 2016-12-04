@@ -20,7 +20,18 @@ __This is work in progress. I've just uploaded my CRUD project files for now. Pl
 ```bash
 $ cp ./platformio-dist.ini platformio.ini
 $ pio lib install PubSubClient
+
+# My own libraries from Platformio.org:
+$ pio lib install GenericAnalogSensor
+$ pio lib install MqttUtil
+$ pio lib install PirSensor
+$ pio lib install SwitchSensor
 ```
+
+All custom libraries can be found in this repo: https://github.com/5orenso/arduino-libs
+
+I've registered all inside PlatformIO, but I'm waiting for approval.
+
 
 Edit `platformio.ini` with your credentials and other settings.
 
@@ -43,7 +54,7 @@ Weee :-)
 * [NodeMCU code for DallasTemperature sensor integrated with AWS IoT](https://github.com/5orenso/nodemcu-mqtt-dallastemperature)
 * [Arduino code for Neopixel animations](https://github.com/5orenso/nodemcu-neopixel-animations)
 * [AMI for MQTT Broker](https://github.com/5orenso/aws-ami-creation)
-
+* [All PlatforIO.org libs by Sorenso](http://platformio.org/lib/search?query=author%253A%2522Sorenso%2522)
 
 ## Contribute
 
