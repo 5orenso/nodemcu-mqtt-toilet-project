@@ -5,12 +5,16 @@
 #include <GenericAnalogSensor.h>
 #include <PirSensor.h>
 #include <SwitchSensor.h>
+#include <TeliaWifiClient.h>
 
 const char* PACKAGE_NAME = "nodemcu_mqtt_toilet_project";
 
 #define DEBUG false
 #define VERBOSE true
 #define DEEP_SLEEP false
+
+#define WIFI_RESET_TIMER_SECONDS 60
+#define MQTT_RESET_TIMER_SECONDS 60
 
 #define PUBLISH_INTERVAL 30
 #define SLEEP_DELAY_IN_SECONDS  30
@@ -22,6 +26,9 @@ const char* PACKAGE_NAME = "nodemcu_mqtt_toilet_project";
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
+
+const char* teliaWifiUser = TELIA_WIFI_USER;
+const char* teliaWifiPassword = TELIA_WIFI_PASSWORD;
 
 const char* mqtt_server = MQTT_SERVER;
 const int   mqtt_port = MQTT_PORT;
@@ -49,12 +56,16 @@ SwitchSensor mySwitch = SwitchSensor(SWITCH_SENSOR_PIN, 1, false, false);
 SwitchSensor mySwitchWomen = SwitchSensor(SWITCH_SENSOR_WOMEN_PIN, 1, false, false);
 
 void setupWifi() {
-    delay(10);
+    long loopTimer = millis();
     Serial.print("Connecting to "); Serial.println(ssid);
-    WiFi.begin(ssid, password);
+    WiFi.begin(ssid);
     while (WiFi.status() != WL_CONNECTED) {
+        long now = millis();
+        if (now - loopTimer > (WIFI_RESET_TIMER_SECONDS * 1000)) {
+            ESP.restart();
+        }
         Serial.print("."); Serial.print(ssid);
-        delay(500);
+        delay(1000);
     }
     randomSeed(micros());
     Serial.println(""); Serial.print("WiFi connected with IP: "); Serial.println(WiFi.localIP());
@@ -74,6 +85,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void reconnectMqtt(uint32 ipAddress, long wifiDisconnectedPeriode) {
+    long loopTimer = millis();
     while (!client.connected()) {
         String clientId = "ESP8266Client-";
         clientId += String(random(0xffff), HEX);
@@ -83,6 +95,10 @@ void reconnectMqtt(uint32 ipAddress, long wifiDisconnectedPeriode) {
             client.subscribe(inTopic);
             mqttUtil.sendControllerInfo(client, ipAddress, wifiDisconnectedPeriode);
         } else {
+            long now = millis();
+            if (now - loopTimer > (MQTT_RESET_TIMER_SECONDS * 1000)) {
+                ESP.restart();
+            }
             Serial.print("failed, rc="); Serial.print(client.state()); Serial.println(" try again in 5 seconds...");
             delay(5000);
         }
@@ -102,6 +118,7 @@ void setup(void) {
         Serial.println("Wifi disconnected...");
     });
     setupWifi();
+    TeliaWifi.connect(teliaWifiUser, teliaWifiPassword);
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(callback);
 
@@ -112,9 +129,9 @@ void setup(void) {
 }
 
 void loop() {
-    delay(0); // Allow internal stuff to be executed.
-    if (!wifiConnected) {
-        delay(1000);
+    if (WiFi.status() != WL_CONNECTED) {
+        setupWifi();
+        TeliaWifi.connect(teliaWifiUser, teliaWifiPassword);
         return;
     }
     if (!client.connected()) {
@@ -174,5 +191,7 @@ void loop() {
             ESP.deepSleep(SLEEP_DELAY_IN_SECONDS * 1000000, WAKE_RF_DEFAULT);
         }
     }
+
+    delay(10); // Allow internal stuff to be executed.
 }
 
